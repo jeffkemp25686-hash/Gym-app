@@ -244,38 +244,88 @@ function renderToday() {
   `;
 
   day.exercises.forEach((ex, exIndex) => {
-    const suggestion = getSuggestion(dayIndex, exIndex, ex.reps);
+
+  // ---------- RUN DAY DETECTION ----------
+  const isRunExercise =
+    ex.name.toLowerCase().includes("run") ||
+    day.name.toLowerCase().includes("run");
+
+  // ===== RUN SESSION UI =====
+  if (isRunExercise) {
 
     html += `
-      <h4>${ex.name} — ${ex.sets} x ${ex.reps}</h4>
-      <small style="color:#666;">
-        ${suggestion ? `Suggested next time: ${suggestion} kg` : ""}
-      </small>
+      <div style="
+        background:#f7f7f7;
+        border:1px solid #ddd;
+        border-radius:12px;
+        padding:14px;
+        margin:12px 0;
+      ">
+        <h4>${ex.name}</h4>
+
+        <p style="margin:8px 0;">
+          🏃 <strong>Run Session</strong>
+        </p>
+
+        <p style="color:#555;">
+          Go to the <strong>Run</strong> tab and enter your distance and time.
+        </p>
+
+        <p style="color:#555;">
+          Once completed, return here and press
+          <strong>Finish Workout ✅</strong>.
+        </p>
+      </div>
     `;
 
-    for (let s = 1; s <= ex.sets; s++) {
-      const weightKey = `d${dayIndex}-e${exIndex}-s${s}-w`;
-      const repsKey = `d${dayIndex}-e${exIndex}-s${s}-r`;
+    return; // skip strength inputs
+  }
 
-      const weight = localStorage.getItem(weightKey) || "";
-      const reps = localStorage.getItem(repsKey) || "";
+  // ===== NORMAL STRENGTH EXERCISES =====
+  const suggestion = getSuggestion(dayIndex, exIndex, ex.reps);
 
-      html += `
-        <div style="margin-bottom:8px;">
-          Set ${s}<br>
-          <input
-            placeholder="Weight"
-            value="${weight}"
-            oninput="localStorage.setItem('${weightKey}', this.value)"
-          >
-          <input
-            placeholder="Reps"
-            value="${reps}"
-            oninput="localStorage.setItem('${repsKey}', this.value)"
-          >
-        </div>
-      `;
-    }
+  html += `
+    <h4>${ex.name} — ${ex.sets} x ${ex.reps}</h4>
+    <small style="color:#666;">
+      ${suggestion ? `Suggested next time: ${suggestion} kg` : ""}
+    </small>
+  `;
+
+  for (let s = 1; s <= ex.sets; s++) {
+
+    const weightKey = `d${dayIndex}-e${exIndex}-s${s}-w`;
+    const repsKey = `d${dayIndex}-e${exIndex}-s${s}-r`;
+
+    const weight = localStorage.getItem(weightKey) || "";
+    const reps = localStorage.getItem(repsKey) || "";
+
+    html += `
+      <div style="margin-bottom:8px;">
+        Set ${s}<br>
+
+        <input
+          placeholder="Weight"
+          value="${weight}"
+          oninput="localStorage.setItem('${weightKey}',this.value)"
+        >
+
+        <input
+          placeholder="Reps"
+          value="${reps}"
+          oninput="localStorage.setItem('${repsKey}',this.value)"
+        >
+      </div>
+    `;
+  }
+
+  html += `
+    <button onclick="startRestTimer(this)">
+      Start 60s Rest
+    </button>
+    <hr>
+  `;
+});
+
 
     html += `
       <button onclick="startRestTimer(this)">Start 60s Rest</button>
