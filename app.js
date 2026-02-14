@@ -458,6 +458,13 @@ function renderNutrition() {
       <button id="btnProtein"></button>
       <button id="btnWater"></button>
       <button id="btnVeg"></button>
+      <button id="btnSteps"></button>
+
+<br><br>
+
+<label>Steps (optional number)</label>
+<input id="nutriStepsCount" placeholder="e.g. 10350">
+
 
       <br><br>
 
@@ -480,6 +487,8 @@ function renderNutrition() {
   const btnProtein = document.getElementById("btnProtein");
   const btnWater = document.getElementById("btnWater");
   const btnVeg = document.getElementById("btnVeg");
+  const btnSteps = document.getElementById("btnSteps");
+  const inpStepsCount = document.getElementById("nutriStepsCount");
   const inpEnergy = document.getElementById("nutriEnergy");
   const inpNotes = document.getElementById("nutriNotes");
 
@@ -496,11 +505,17 @@ function renderNutrition() {
     refresh();
   }
 
-  function refresh(){
-    setBtn(btnProtein,"Protein",localStorage.getItem(key("protein"))||"No");
-    setBtn(btnWater,"Water",localStorage.getItem(key("water"))||"No");
-    setBtn(btnVeg,"Veg",localStorage.getItem(key("veg"))||"No");
-  }
+  
+    function refresh(){
+  setBtn(btnProtein,"Protein",localStorage.getItem(key("protein"))||"No");
+  setBtn(btnWater,"Water",localStorage.getItem(key("water"))||"No");
+  setBtn(btnVeg,"Veg",localStorage.getItem(key("veg"))||"No");
+  setBtn(btnSteps,"Steps",localStorage.getItem(key("steps"))||"No");
+
+  // load steps number into the input
+  inpStepsCount.value = localStorage.getItem(key("stepsCount")) || "";
+}
+
 
   nutriDate.addEventListener("change",()=>{
     localStorage.setItem("nutri_date",nutriDate.value);
@@ -510,6 +525,10 @@ function renderNutrition() {
   btnProtein.onclick=()=>toggle("protein");
   btnWater.onclick=()=>toggle("water");
   btnVeg.onclick=()=>toggle("veg");
+btnSteps.onclick=()=>toggle("steps");
+
+inpStepsCount.oninput = () =>
+  localStorage.setItem(key("stepsCount"), inpStepsCount.value);
 
   inpEnergy.oninput=()=>localStorage.setItem(key("energy"),inpEnergy.value);
   inpNotes.oninput=()=>localStorage.setItem(key("notes"),inpNotes.value);
