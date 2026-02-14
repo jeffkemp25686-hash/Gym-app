@@ -2,6 +2,7 @@
 // ALANA TRAINING APP
 // STAGE 2 — WORKOUT ENGINE
 // ==========================
+const SHEETS_URL = "https://script.google.com/macros/s/AKfycbw5jJ4Zk0TtCp9etm2ImxxsSqsxiLoCxZ_U50tZwE1LdqPbkw3hEan8r1YgUCgs7vJaTA/exec";
 
 const app = document.getElementById("app");
 
@@ -226,6 +227,9 @@ html += `
       <hr>
     `;
   });
+  
+<button onclick="syncToCoach()">Sync to Coach ✅</button>
+<p id="syncStatus" style="color:#666;"></p>
 
   html+=`
     <button onclick="nextDay()">Finish Workout ✅</button>
@@ -286,3 +290,59 @@ function renderProgress() {
 
 // INITIAL LOAD
 renderToday();
+async function syncToCoach() {
+  const ts = new Date().toISOString();
+
+  const dayIndex = getCurrentDay();
+  const day = program[dayIndex];
+
+  // -------- SET ROWS --------
+  const setRows = [];
+
+  day.exercises.forEach((ex, exIndex) => {
+    for (let s = 1; s <= ex.sets; s++) {
+      const w = localStorage.getItem(`d${dayIndex}-e${exIndex}-s${s}-w`) || "";
+      const r = localStorage.getItem(`d${dayIndex}-e${exIndex}-s${s}-r`) || "";
+
+      if (w || r) {
+        const rowId = `${ATHLETE}|${day.name}|${ex.name}|set${s}`;
+        setRows.push([
+          rowId,
+          ts,
+          ATHLETE,
+          day.name,
+          ex.name,
+          s,
+          ex.reps,
+          w,
+          r
+        ]);
+      }
+    }
+  });
+
+  // -------- RUN ROWS --------
+  const runRows = []; // we’ll fill this next step when we add run logging
+
+  // -------- NUTRITION ROWS --------
+  const nutritionRows = []; // next step
+
+  // -------- BODY ROWS --------
+  const bodyRows = []; // next step
+
+  const payload = JSON.stringify({ setRows, runRows, nutritionRows, bodyRows });
+
+  const el = document.getElementById("syncStatus");
+  if (el) el.textContent = "Syncing…";
+
+  await fetch(SHEETS_URL, {
+    method: "POST",
+    mode: "no-cors",
+    headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+    body: "payload=" + encodeURIComponent(payload)
+  });
+
+  if (el) el.textContent = "✅ Synced. Coach sheet updated.";
+}
+
+window.syncToCoach = syncToCoach;
