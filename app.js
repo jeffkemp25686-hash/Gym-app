@@ -611,6 +611,8 @@ async function syncNutrition() {
   const protein = localStorage.getItem(key("protein")) || "No";
   const water   = localStorage.getItem(key("water"))   || "No";
   const veg     = localStorage.getItem(key("veg"))     || "No";
+  const steps = localStorage.getItem(key("steps")) || "No";
+  const stepsCount = (localStorage.getItem(key("stepsCount")) || "").trim();
   const energy  = (localStorage.getItem(key("energy")) || "").trim();
   const notes   = (localStorage.getItem(key("notes"))  || "").trim();
 
@@ -618,16 +620,19 @@ async function syncNutrition() {
   const rowId = `${ATHLETE}|NUTRITION|${date}`;
 
   const nutritionRows = [[
-    rowId,
-    date,
-    ATHLETE,
-    protein,
-    water,
-    veg,
-    energy,
-    notes,
-    ts
-  ]];
+  rowId,
+  date,
+  ATHLETE,
+  protein,
+  water,
+  veg,
+  steps,
+  stepsCount,
+  energy,
+  notes,
+  ts
+]];
+
 
   const payload = JSON.stringify({
     setRows: [],
