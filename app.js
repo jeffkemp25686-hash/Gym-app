@@ -6,6 +6,14 @@
 const SHEETS_URL = "https://script.google.com/macros/s/AKfycbw5jJ4Zk0TtCp9etm2ImxxsSqsxiLoCxZ_U50tZwE1LdqPbkw3hEan8r1YgUCgs7vJaTA/exec";
 const ATHLETE = "Alana";
 
+const NUTRITION_TARGETS = {
+  protein_g: 110,
+  water_l_min: 2.5,
+  water_l_max: 3.0,
+  veg_serves: 5,
+  steps: 10000
+};
+
 const app = document.getElementById("app");
 const STORAGE_DAY = "currentTrainingDay";
 
@@ -408,6 +416,33 @@ function renderNutrition() {
   app.innerHTML = `
     <div class="card">
       <h2>Nutrition (Daily Check)</h2>
+
+<div style="background:#f7f7f7; border:1px solid #ddd; border-radius:12px; padding:12px; margin:12px 0;">
+  <h3 style="margin:0 0 8px 0;">Today’s Targets</h3>
+
+  <div style="line-height:1.6;">
+    <strong>Protein:</strong> ${NUTRITION_TARGETS.protein_g}g
+    <br>
+    <small style="color:#555;">Aim: protein at every meal + 1 high-protein snack</small>
+
+    <br><br>
+
+    <strong>Water:</strong> ${NUTRITION_TARGETS.water_l_min}–${NUTRITION_TARGETS.water_l_max}L
+    <br>
+    <small style="color:#555;">Add extra on run days</small>
+
+    <br><br>
+
+    <strong>Veg:</strong> ${NUTRITION_TARGETS.veg_serves}+ serves
+    <br>
+    <small style="color:#555;">Easy win: 2 fists of veg at lunch + dinner</small>
+
+    <br><br>
+
+    <strong>Steps:</strong> ${NUTRITION_TARGETS.steps.toLocaleString()}+ (optional)
+  </div>
+</div>
+
 
       <label>Date</label>
       <input id="nutriDate" type="date" value="${date}" />
