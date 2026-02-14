@@ -474,6 +474,43 @@ function renderNutrition() {
     </div>
   `;
 
+  <div style="
+  background:#fff;
+  border:1px solid #ddd;
+  border-radius:12px;
+  padding:12px;
+  margin:12px 0;
+">
+  <h3 style="margin:0 0 8px 0;">Protein Cheatsheet 🍗</h3>
+
+  <div style="line-height:1.6; color:#444;">
+
+    <strong>≈30g Protein Examples:</strong><br>
+
+    ✅ 150g chicken breast<br>
+    ✅ 200g Greek yogurt<br>
+    ✅ 1 scoop whey + milk<br>
+    ✅ 4 eggs + egg whites<br>
+    ✅ 150g lean beef<br>
+    ✅ Tuna can + rice cakes<br>
+
+    <br>
+
+    <strong>Easy Daily Formula:</strong><br>
+    Breakfast → Protein source<br>
+    Lunch → Protein + veg<br>
+    Dinner → Protein + veg<br>
+    Snack → Yogurt or shake
+
+    <br><br>
+
+    <small style="color:#666;">
+      Goal = ~4 protein feeds/day → hits ${NUTRITION_TARGETS.protein_g}g automatically.
+    </small>
+
+  </div>
+</div>
+
   // Elements
   const nutriDate   = document.getElementById("nutriDate");
   const btnProtein  = document.getElementById("btnProtein");
