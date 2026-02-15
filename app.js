@@ -83,11 +83,18 @@ function todayDateStr() {
 // --------------------------
 // RUN COMPLETION CHECK (LOCK FINISH BUTTON)
 // --------------------------
+function runKey(date, field) {
+  return `run_${date}_${field}`;
+}
+
+// Run is "logged" ONLY if today's distance + time exist (prevents carryover)
 function isRunLogged() {
-  const distance = (localStorage.getItem("run_distance") || "").trim();
-  const time = (localStorage.getItem("run_time") || "").trim();
+  const date = todayDateStr();
+  const distance = (localStorage.getItem(runKey(date, "distance")) || "").trim();
+  const time = (localStorage.getItem(runKey(date, "time")) || "").trim();
   return !!(distance && time);
 }
+
 
 // --------------------------
 // PROGRAM STRUCTURE
@@ -415,20 +422,23 @@ window.syncToCoach = syncToCoach;
 // RUN TAB (NO RE-RENDER TYPING)
 // --------------------------
 function renderRun() {
-  const distance = localStorage.getItem("run_distance") || "";
-  const time = localStorage.getItem("run_time") || "";
-  const effort = localStorage.getItem("run_effort") || "Easy";
-  const notes = localStorage.getItem("run_notes") || "";
+  const date = todayDateStr();
+
+  const distance = localStorage.getItem(runKey(date, "distance")) || "";
+  const time = localStorage.getItem(runKey(date, "time")) || "";
+  const effort = localStorage.getItem(runKey(date, "effort")) || "Easy";
+  const notes = localStorage.getItem(runKey(date, "notes")) || "";
 
   app.innerHTML = `
     <div class="card">
       <h2>Run Log</h2>
+      <p style="color:#666;margin-top:-6px;">Saving for: <strong>${date}</strong></p>
 
       <label>Distance (km)</label>
-      <input id="runDistance" value="${distance}">
+      <input id="runDistance" value="${distance}" inputmode="decimal">
 
       <label>Time (mm:ss)</label>
-      <input id="runTime" placeholder="28:30" value="${time}">
+      <input id="runTime" placeholder="28:30" value="${time}" inputmode="text">
 
       <label>Effort</label>
       <select id="runEffort">
@@ -458,26 +468,28 @@ function renderRun() {
     paceDisplay.textContent = pace || "--";
   }
 
+  // Save LIVE to today’s keys (no carryover to future run days)
   distInput.addEventListener("input", () => {
-    localStorage.setItem("run_distance", distInput.value);
+    localStorage.setItem(runKey(date, "distance"), distInput.value);
     updatePace();
   });
 
   timeInput.addEventListener("input", () => {
-    localStorage.setItem("run_time", timeInput.value);
+    localStorage.setItem(runKey(date, "time"), timeInput.value);
     updatePace();
   });
 
   effortSelect.addEventListener("change", () => {
-    localStorage.setItem("run_effort", effortSelect.value);
+    localStorage.setItem(runKey(date, "effort"), effortSelect.value);
   });
 
   notesInput.addEventListener("input", () => {
-    localStorage.setItem("run_notes", notesInput.value);
+    localStorage.setItem(runKey(date, "notes"), notesInput.value);
   });
 
   updatePace();
 }
+
 
 // --------------------------
 // RUN SYNC (HISTORY ROWS, NEVER OVERWRITE)
@@ -487,18 +499,22 @@ function renderRun() {
 // --------------------------
 async function syncRun() {
   const ts = new Date().toISOString();
+  const date = todayDateStr();
 
-  const distance = localStorage.getItem("run_distance") || "";
-  const time = localStorage.getItem("run_time") || "";
-  const effort = localStorage.getItem("run_effort") || "";
-  const notes = localStorage.getItem("run_notes") || "";
+  const distance = (localStorage.getItem(runKey(date, "distance")) || "").trim();
+  const time = (localStorage.getItem(runKey(date, "time")) || "").trim();
+  const effort = (localStorage.getItem(runKey(date, "effort")) || "").trim();
+  const notes = (localStorage.getItem(runKey(date, "notes")) || "").trim();
 
   const pace = calculatePace(distance, time);
-  if (!distance && !time) return;
+  if (!distance || !time) return;
 
+  // Unique RowID = every run keeps history
   const rowId = `${ATHLETE}|RUN|${ts}`;
+
   const runRows = [[rowId, ts, ATHLETE, distance, time, effort, notes, pace]];
 
+  // Save locally for graphs/history
   runRows.forEach((r) => upsertRowIntoHistory(RUNS_LOG_KEY, r));
 
   const payload = JSON.stringify({
@@ -518,16 +534,26 @@ async function syncRun() {
       headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
       body: "payload=" + encodeURIComponent(payload),
     });
+
     if (el) el.textContent = "✅ Run synced!";
+
+    // ✅ Reset the Run tab inputs AFTER sync so it doesn't carry over.
+    // (Keeps the saved run for today's date, but clears the form for next time she opens Run tab)
+    localStorage.removeItem(runKey(date, "distance"));
+    localStorage.removeItem(runKey(date, "time"));
+    localStorage.removeItem(runKey(date, "effort"));
+    localStorage.removeItem(runKey(date, "notes"));
+
+    // Refresh Run tab + unlock Finish Workout if on run day
+    renderRun();
+    renderToday();
   } catch (err) {
     console.error(err);
     if (el) el.textContent = "❌ Sync failed.";
   }
-
-  // unlock Finish Workout on run days
-  renderToday();
 }
 window.syncRun = syncRun;
+
 
 // --------------------------
 // NUTRITION TAB (DAILY HABITS + STEPS)
