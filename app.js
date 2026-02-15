@@ -1,11 +1,12 @@
 // ==========================
-// ALANA TRAINING APP
-// WORKOUT ENGINE + LOGGING + SUGGESTIONS + COACH SYNC
-// RUNS + NUTRITION + BODY + LOCAL HISTORY + PROGRESS DASHBOARD
-// RUN DAY: Clean UI + Finish locked until TODAY'S run is logged
-// RUN TAB: Date-based draft + clears after sync so it won't carry over
+// ALANA TRAINING APP (COMPLETE)
+// WORKOUT ENGINE + SET LOGGING + SUGGESTIONS + REST TIMER
+// RUNS (with prescription) + NUTRITION (targets + steps) + BODY
+// LOCAL HISTORY + PROGRESS CHARTS
+// COACH SYNC via Google Apps Script (payload=...)
 // ==========================
 
+// ===== CONFIG =====
 const SHEETS_URL =
   "https://script.google.com/macros/s/AKfycbw5jJ4Zk0TtCp9etm2ImxxsSqsxiLoCxZ_U50tZwE1LdqPbkw3hEan8r1YgUCgs7vJaTA/exec";
 
@@ -23,11 +24,14 @@ const app = document.getElementById("app");
 const STORAGE_DAY = "currentTrainingDay";
 
 // ===== LOCAL HISTORY KEYS =====
-const SETS_LOG_KEY = "history_sets"; // set rows
-const RUNS_LOG_KEY = "history_runs"; // run rows
+const SETS_LOG_KEY = "history_sets";       // set rows
+const RUNS_LOG_KEY = "history_runs";       // run rows
 const NUTRI_LOG_KEY = "history_nutrition"; // nutrition rows
-const BODY_LOG_KEY = "history_body"; // body rows
+const BODY_LOG_KEY = "history_body";       // body rows
 
+// ==========================
+// STORAGE HELPERS
+// ==========================
 function getLogArr(key) {
   return JSON.parse(localStorage.getItem(key) || "[]");
 }
@@ -46,9 +50,13 @@ function upsertRowIntoHistory(storageKey, row) {
   setLogArr(storageKey, arr);
 }
 
-// --------------------------
-// TIME + PACE HELPERS
-// --------------------------
+// ==========================
+// DATE/TIME HELPERS
+// ==========================
+function todayDateStr() {
+  return new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+}
+
 function timeToMinutes(timeStr) {
   const s = String(timeStr || "").trim();
   if (!s) return null;
@@ -76,52 +84,9 @@ function calculatePace(distance, timeStr) {
   return `${m}:${String(s).padStart(2, "0")} /km`;
 }
 
-function todayDateStr() {
-  return new Date().toISOString().slice(0, 10);
-}
-
 // ==========================
-// RUN SESSION STATE (DATE-BASED)
+// PROGRAM (6 DAYS + 1 ACTIVE REST)
 // ==========================
-function runKey(date, field) {
-  return `run_${date}_${field}`;
-}
-function todayRunDate() {
-  return todayDateStr();
-}
-function runDoneKey(date) {
-  return `run_${date}_done`;
-}
-
-function markRunDoneToday() {
-  const date = todayRunDate();
-  localStorage.setItem(runDoneKey(date), "1");
-}
-
-function isRunLoggedToday() {
-  const date = todayRunDate();
-
-  // ✅ if we've already synced a run today, it's done (even if draft cleared)
-  if (localStorage.getItem(runDoneKey(date)) === "1") return true;
-
-  // otherwise, treat draft as "done" only if distance+time entered (not synced yet)
-  const dist = (localStorage.getItem(runKey(date, "distance")) || "").trim();
-  const time = (localStorage.getItem(runKey(date, "time")) || "").trim();
-  return dist !== "" && time !== "";
-
-}
-function clearRunDraftForToday() {
-  const date = todayRunDate();
-  localStorage.removeItem(runKey(date, "distance"));
-  localStorage.removeItem(runKey(date, "time"));
-  localStorage.removeItem(runKey(date, "effort"));
-  localStorage.removeItem(runKey(date, "notes"));
-}
-
-// --------------------------
-// PROGRAM STRUCTURE
-// IMPORTANT: only the run item has type:"run"
-// --------------------------
 const program = [
   {
     name: "Lower Body Strength",
@@ -146,11 +111,11 @@ const program = [
   {
     name: "Run + Glutes",
     exercises: [
+      { name: "RUN_SESSION", sets: 1, reps: 1 }, // special marker
       { name: "Hip Thrust", sets: 4, reps: 10 },
       { name: "Cable Kickbacks", sets: 3, reps: 15 },
       { name: "Step Ups", sets: 3, reps: 12 },
       { name: "Plank", sets: 3, reps: 30 },
-      { name: "Run Session", sets: 1, reps: 1, type: "run" },
     ],
   },
   {
@@ -179,13 +144,13 @@ const program = [
   },
   {
     name: "Long Easy Run",
-    exercises: [{ name: "Run Session", sets: 1, reps: 1, type: "run" }],
+    exercises: [{ name: "RUN_LONG", sets: 1, reps: 1 }], // special marker
   },
 ];
 
-// --------------------------
-// NAVIGATION
-// --------------------------
+// ==========================
+// NAVIGATION (hooked to your bottom nav buttons)
+// ==========================
 function showTab(tab) {
   if (tab === "today") renderToday();
   if (tab === "run") renderRun();
@@ -195,9 +160,9 @@ function showTab(tab) {
 }
 window.showTab = showTab;
 
-// --------------------------
+// ==========================
 // DAY TRACKING
-// --------------------------
+// ==========================
 function getCurrentDay() {
   let day = localStorage.getItem(STORAGE_DAY);
   if (!day) {
@@ -206,6 +171,7 @@ function getCurrentDay() {
   }
   return parseInt(day, 10);
 }
+
 function nextDay() {
   let day = getCurrentDay();
   day = (day + 1) % program.length;
@@ -214,9 +180,9 @@ function nextDay() {
 }
 window.nextDay = nextDay;
 
-// --------------------------
+// ==========================
 // REST TIMER (60s)
-// --------------------------
+// ==========================
 function startRestTimer(btn) {
   let seconds = 60;
   btn.disabled = true;
@@ -224,6 +190,7 @@ function startRestTimer(btn) {
   const interval = setInterval(() => {
     btn.innerText = `Rest ${seconds}s`;
     seconds--;
+
     if (seconds < 0) {
       clearInterval(interval);
       btn.innerText = "Start 60s Rest";
@@ -233,9 +200,9 @@ function startRestTimer(btn) {
 }
 window.startRestTimer = startRestTimer;
 
-// --------------------------
-// PROGRESSION SUGGESTION
-// --------------------------
+// ==========================
+// SET SUGGESTIONS
+// ==========================
 function getSuggestion(dayIndex, exIndex, targetReps) {
   let totalWeight = 0;
   let totalReps = 0;
@@ -244,7 +211,6 @@ function getSuggestion(dayIndex, exIndex, targetReps) {
   for (let s = 1; s <= 6; s++) {
     const w = parseFloat(localStorage.getItem(`d${dayIndex}-e${exIndex}-s${s}-w`));
     const r = parseFloat(localStorage.getItem(`d${dayIndex}-e${exIndex}-s${s}-r`));
-
     if (!isNaN(w) && !isNaN(r)) {
       totalWeight += w;
       totalReps += r;
@@ -264,17 +230,100 @@ function getSuggestion(dayIndex, exIndex, targetReps) {
   return (avgWeight + increase).toFixed(1);
 }
 
-// --------------------------
-// TODAY TAB (FIXED)
-// - Only ex.type === "run" shows run card
-// - Finish locked only on days that have a run exercise
-// --------------------------
+// ==========================
+// RUN SESSION STATE + LOCKING
+// ==========================
+function todayRunDate() {
+  return localStorage.getItem("run_date") || todayDateStr();
+}
+
+function runKey(date, field) {
+  return `run_${date}_${field}`;
+}
+
+function clearRunDraftForToday() {
+  const date = todayRunDate();
+  localStorage.removeItem(runKey(date, "distance"));
+  localStorage.removeItem(runKey(date, "time"));
+  localStorage.removeItem(runKey(date, "effort"));
+  localStorage.removeItem(runKey(date, "notes"));
+}
+
+function runDoneKey(date) {
+  return `run_${date}_done`;
+}
+function markRunDoneToday() {
+  const date = todayRunDate();
+  localStorage.setItem(runDoneKey(date), "1");
+}
+function isRunLoggedToday() {
+  const date = todayRunDate();
+
+  // ✅ if synced today, it's done even after clearing the draft
+  if (localStorage.getItem(runDoneKey(date)) === "1") return true;
+
+  // draft counts as "done" only if distance + time exist
+  const dist = (localStorage.getItem(runKey(date, "distance")) || "").trim();
+  const time = (localStorage.getItem(runKey(date, "time")) || "").trim();
+  return dist !== "" && time !== "";
+}
+
+// Determine if TODAY requires a run entry
+function todayRequiresRun(dayObj) {
+  if (!dayObj) return false;
+  const dn = (dayObj.name || "").toLowerCase();
+  if (dn.includes("run")) return true;
+  return (dayObj.exercises || []).some((ex) => String(ex.name).toUpperCase().startsWith("RUN_"));
+}
+
+// ==========================
+// RUN PRESCRIPTION (simple + clear)
+// ==========================
+function getRunPrescription(dayName) {
+  const name = (dayName || "").toLowerCase();
+
+  if (name.includes("long easy run")) {
+    return {
+      title: "Long Easy Run (Comfortable)",
+      details: [
+        "Warm-up: 5–8 min brisk walk or very easy jog",
+        "Run: 3–6km EASY pace (you can talk in sentences)",
+        "Cool-down: 5 min walk + light stretching",
+      ],
+      effort: "Easy",
+      defaultDistance: "4.0",
+    };
+  }
+
+  if (name.includes("run + glutes")) {
+    return {
+      title: "Run Session (Quality but Controlled)",
+      details: [
+        "Warm-up: 5–8 min easy jog",
+        "Main set: 6 × 1 min faster / 1 min easy (repeat)",
+        "Cool-down: 5 min easy + stretch calves/hips",
+      ],
+      effort: "Moderate",
+      defaultDistance: "3.0",
+    };
+  }
+
+  return {
+    title: "Run Session",
+    details: ["Warm-up 5 min", "Run easy–moderate", "Cool-down 5 min walk"],
+    effort: "Easy",
+    defaultDistance: "",
+  };
+}
+
+// ==========================
+// TODAY TAB
+// ==========================
 function renderToday() {
   const dayIndex = getCurrentDay();
   const day = program[dayIndex];
-
-  const dayRequiresRun = day.exercises.some((ex) => ex.type === "run");
-  const runComplete = !dayRequiresRun || isRunLoggedToday();
+  const needsRun = todayRequiresRun(day);
+  const runDone = !needsRun ? true : isRunLoggedToday();
 
   let html = `
     <div class="card">
@@ -282,33 +331,34 @@ function renderToday() {
       <h3>${day.name}</h3>
   `;
 
-  day.exercises.forEach((ex, exIndex) => {
-    // ===== RUN SESSION UI (ONLY ON RUN ITEM) =====
-    if (ex.type === "run") {
-      const runDone = isRunLoggedToday();
-      html += `
-        <div style="
-          background:${runDone ? "#e8f7ec" : "#fff7e6"};
-          border:1px solid ${runDone ? "#7bd389" : "#ffc107"};
-          border-radius:12px;
-          padding:16px;
-          margin:12px 0;
-        ">
-          <h4 style="margin:0 0 8px 0;">🏃 Run Session</h4>
-          ${
-            runDone
-              ? `<p style="color:#2e7d32;margin:0 0 8px 0;">✅ Run logged for today.</p>`
-              : `<p style="color:#a66b00;margin:0 0 8px 0;">Please log your run before finishing today’s workout.</p>`
-          }
-          <button onclick="showTab('run')" style="padding:10px 14px; cursor:pointer;">
-            Go To Run Tab →
-          </button>
+  // If day requires run, show one clear run card at top
+  if (needsRun) {
+    html += `
+      <div style="background:#fff7e6;border:1px solid #f0c36d;border-radius:12px;padding:14px;margin:12px 0;">
+        <div style="font-weight:800;margin-bottom:6px;">🏃 Run Session</div>
+        <div style="color:#7a5a12;margin-bottom:10px;">
+          Please log your run before finishing today’s workout.
         </div>
-      `;
+        <button onclick="showTab('run')" style="padding:10px 12px;cursor:pointer;">
+          Go To Run Tab →
+        </button>
+        <div style="margin-top:8px;color:#666;font-size:13px;">
+          Status: ${runDone ? "✅ Run logged" : "❌ Not logged yet"}
+        </div>
+      </div>
+    `;
+  }
+
+  // Render exercises (skip RUN markers completely)
+  day.exercises.forEach((ex, exIndex) => {
+    const exName = String(ex.name || "");
+
+    if (exName.toUpperCase().startsWith("RUN_")) {
+      // no strength inputs for run marker
       return;
     }
 
-    // ===== NORMAL STRENGTH EXERCISES =====
+    // Normal logging
     const suggestion = getSuggestion(dayIndex, exIndex, ex.reps);
 
     html += `
@@ -326,45 +376,53 @@ function renderToday() {
       const reps = localStorage.getItem(repsKey) || "";
 
       html += `
-        <div style="margin-bottom:8px;">
-          Set ${s}<br>
-          <input
-            placeholder="Weight"
-            value="${weight}"
-            oninput="localStorage.setItem('${weightKey}',this.value)"
-          >
-          <input
-            placeholder="Reps"
-            value="${reps}"
-            oninput="localStorage.setItem('${repsKey}',this.value)"
-          >
+        <div style="margin-bottom:10px;">
+          <div style="color:#666;font-size:13px;">Set ${s}</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <input
+              style="padding:10px;width:160px;"
+              placeholder="Weight"
+              value="${weight}"
+              oninput="localStorage.setItem('${weightKey}', this.value)"
+            >
+            <input
+              style="padding:10px;width:160px;"
+              placeholder="Reps"
+              value="${reps}"
+              oninput="localStorage.setItem('${repsKey}', this.value)"
+            >
+          </div>
         </div>
       `;
     }
 
     html += `
-      <button onclick="startRestTimer(this)">Start 60s Rest</button>
+      <button onclick="startRestTimer(this)" style="padding:10px 12px;cursor:pointer;margin-bottom:10px;">
+        Start 60s Rest
+      </button>
       <hr>
     `;
   });
 
+  // Buttons: sync + finish (locked until run logged if required)
   html += `
-      <button onclick="syncToCoach()">Sync to Coach ✅</button>
+      <button onclick="syncToCoach()" style="padding:10px 12px;cursor:pointer;">
+        Sync to Coach ✅
+      </button>
       <p id="syncStatus" style="color:#666; margin-top:8px;"></p>
 
       <button
+        id="finishBtn"
         onclick="nextDay()"
-        ${runComplete ? "" : "disabled"}
-        style="margin-top:10px; opacity:${runComplete ? "1" : "0.5"}; cursor:${runComplete ? "pointer" : "not-allowed"};"
+        style="padding:10px 12px;cursor:pointer;margin-top:10px;"
+        ${runDone ? "" : "disabled"}
       >
         Finish Workout ✅
       </button>
 
-      ${
-        runComplete
-          ? ""
-          : `<p style="color:#a66b00; margin-top:8px;">🔒 Finish locked until today’s run is logged.</p>`
-      }
+      <p id="finishHint" style="color:${runDone ? "#2e7d32" : "#b26a00"}; margin-top:8px;">
+        ${runDone ? "✅ Ready to finish." : "🔒 Finish locked until today’s run is logged."}
+      </p>
 
       <p style="color:green;">✓ Auto saved</p>
     </div>
@@ -373,25 +431,26 @@ function renderToday() {
   app.innerHTML = html;
 }
 
-// --------------------------
-// SYNC TO COACH — SETS
-// --------------------------
+// ==========================
+// SYNC SETS TO COACH (Sheet tab: Sets)
+// Columns:
+// RowID | Timestamp | Athlete | DayName | Exercise | Set | TargetReps | Weight | Reps
+// ==========================
 async function syncToCoach() {
   const ts = new Date().toISOString();
   const date = ts.slice(0, 10);
-
   const dayIndex = getCurrentDay();
   const day = program[dayIndex];
 
   const setRows = [];
 
   day.exercises.forEach((ex, exIndex) => {
-    if (ex.type === "run") return; // skip run marker
+    const exName = String(ex.name || "");
+    if (exName.toUpperCase().startsWith("RUN_")) return;
 
     for (let s = 1; s <= ex.sets; s++) {
       const w = (localStorage.getItem(`d${dayIndex}-e${exIndex}-s${s}-w`) || "").trim();
       const r = (localStorage.getItem(`d${dayIndex}-e${exIndex}-s${s}-r`) || "").trim();
-
       if (w || r) {
         const rowId = `${ATHLETE}|${date}|D${dayIndex}|${day.name}|${ex.name}|set${s}`;
         setRows.push([rowId, ts, ATHLETE, day.name, ex.name, s, ex.reps, w, r]);
@@ -426,111 +485,44 @@ async function syncToCoach() {
 }
 window.syncToCoach = syncToCoach;
 
-function getRunPrescription(dayName) {
-  const name = (dayName || "").toLowerCase();
-
-  // You can tweak these any time
-  if (name.includes("long easy run")) {
-    return {
-      title: "Long Easy Run (Comfortable)",
-      details: [
-        "Warm-up: 5–8 min brisk walk or very easy jog",
-        "Run: 3–6km at EASY pace (you can talk in sentences)",
-        "Cool-down: 5 min walk + light stretching",
-      ],
-      effort: "Easy",
-      defaultDistance: "4.0",
-    };
-  }
-
-  if (name.includes("run + glutes")) {
-    return {
-      title: "Run Session (Quality but Controlled)",
-      details: [
-        "Warm-up: 5–8 min easy jog + 3 × 20 sec strides (optional)",
-        "Main set (choose 1):",
-        "• Option A: 10–20 min steady (Moderate, controlled breathing)",
-        "• Option B: 6 × 1 min faster / 1 min easy (repeat)",
-        "Cool-down: 5 min easy + stretch calves/hips",
-      ],
-      effort: "Moderate",
-      defaultDistance: "3.0",
-    };
-  }
-
-  // fallback
-  return {
-    title: "Run Session",
-    details: [
-      "Warm-up: 5–8 min easy",
-      "Run: Easy–moderate effort",
-      "Cool-down: 5 min walk",
-    ],
-    effort: "Easy",
-    defaultDistance: "",
-  };
-}
-
-function get12WeekRunRoadmap() {
-  return [
-    { weeks: "1–2", plan: "2–3 runs/week. Easy runs 2.5–3.5km. 1 session can be short intervals (1 min on/1 min easy)." },
-    { weeks: "3–4", plan: "Easy runs 3–4km. Long run 4–5km. Keep effort mostly EASY." },
-    { weeks: "5–6", plan: "Easy runs 3.5–4.5km. Add 10–15 min steady (moderate) once/week." },
-    { weeks: "7–8", plan: "Long run 5–6km easy. 1 session/week: 6×1 min faster / 1 min easy." },
-    { weeks: "9–10", plan: "Long run 5.5–6.5km easy. 1 session/week: 12–20 min steady." },
-    { weeks: "11–12", plan: "5km feels comfortable. One easy run + one steady run. Week 12: 5km ‘comfortable effort’." },
-  ];
-}
-
+// ==========================
+// RUN TAB (prescription + logging)
+// ==========================
 function renderRun() {
   const dayIndex = getCurrentDay();
   const day = program[dayIndex];
   const date = todayRunDate();
 
-  const distKey = runKey(date, "distance");
-  const timeKey = runKey(date, "time");
-  const effortKey = runKey(date, "effort");
-  const notesKey = runKey(date, "notes");
-
   const prescription = getRunPrescription(day?.name || "");
 
-  const distance = localStorage.getItem(distKey) || prescription.defaultDistance || "";
-  const time = localStorage.getItem(timeKey) || "";
-  const effort = localStorage.getItem(effortKey) || prescription.effort || "Easy";
-  const notes = localStorage.getItem(notesKey) || "";
-
-  const roadmap = get12WeekRunRoadmap();
+  const distance = localStorage.getItem(runKey(date, "distance")) || prescription.defaultDistance || "";
+  const time = localStorage.getItem(runKey(date, "time")) || "";
+  const effort = localStorage.getItem(runKey(date, "effort")) || prescription.effort || "Easy";
+  const notes = localStorage.getItem(runKey(date, "notes")) || "";
 
   app.innerHTML = `
     <div class="card">
       <h2>Run</h2>
 
       <div style="background:#f7f7f7;border:1px solid #ddd;border-radius:12px;padding:12px;margin:12px 0;">
-        <h3 style="margin:0 0 6px 0;">Today's Run Plan</h3>
+        <div style="font-weight:800;margin-bottom:6px;">Today's Run Plan</div>
         <div style="font-weight:700;margin-bottom:6px;">${prescription.title}</div>
         <ul style="margin:0 0 0 18px; padding:0; line-height:1.6; color:#333;">
-          ${prescription.details.map(x => `<li>${x}</li>`).join("")}
+          ${prescription.details.map((x) => `<li>${x}</li>`).join("")}
         </ul>
         <div style="margin-top:8px;color:#666;font-size:13px;">
-          Tip: Log your run here, then go back to <strong>Today</strong> to finish the workout.
-        </div>
-      </div>
-
-      <div style="border:1px solid #ddd;border-radius:12px;padding:12px;margin:12px 0;">
-        <h3 style="margin:0 0 8px 0;">12-Week Progression (Simple Guide)</h3>
-        <div style="font-size:14px; line-height:1.55; color:#333;">
-          ${roadmap.map(r => `<div style="margin:6px 0;"><strong>${r.weeks}:</strong> ${r.plan}</div>`).join("")}
+          Log your run here, then go back to <strong>Today</strong> to finish the workout.
         </div>
       </div>
 
       <label>Date</label>
-      <input id="runDate" type="date" value="${date}" />
+      <input id="runDate" type="date" value="${date}">
 
       <label>Distance (km)</label>
-      <input id="runDistance" value="${distance}" inputmode="decimal" placeholder="e.g. 3.0" />
+      <input id="runDistance" inputmode="decimal" placeholder="e.g. 3.0" value="${distance}">
 
       <label>Time (mm:ss)</label>
-      <input id="runTime" placeholder="e.g. 28:30" value="${time}" />
+      <input id="runTime" placeholder="e.g. 28:30" value="${time}">
 
       <label>Effort</label>
       <select id="runEffort">
@@ -540,16 +532,19 @@ function renderRun() {
       </select>
 
       <label>Notes</label>
-      <input id="runNotes" value="${notes}" placeholder="How it felt / terrain / anything notable" />
+      <input id="runNotes" placeholder="How it felt / terrain / anything notable" value="${notes}">
 
       <p><strong>Pace:</strong> <span id="paceDisplay">--</span></p>
 
-      <button onclick="syncRun()">Sync Run to Coach 🏃</button>
+      <button onclick="syncRun()" style="padding:10px 12px;cursor:pointer;">Sync Run to Coach 🏃</button>
       <p id="runSyncStatus" style="color:#666;"></p>
+
+      <button onclick="showTab('today')" style="padding:10px 12px;cursor:pointer;margin-top:10px;">
+        Back to Today →
+      </button>
     </div>
   `;
 
-  // Elements
   const dateInput = document.getElementById("runDate");
   const distInput = document.getElementById("runDistance");
   const timeInput = document.getElementById("runTime");
@@ -562,7 +557,6 @@ function renderRun() {
     paceDisplay.textContent = pace || "--";
   }
 
-  // Date change swaps keys (history-friendly)
   dateInput.addEventListener("change", () => {
     localStorage.setItem("run_date", dateInput.value);
     renderRun();
@@ -589,9 +583,11 @@ function renderRun() {
   updatePace();
 }
 
-// --------------------------
-// RUN SYNC (clears draft after sync + unlocks Today)
-// --------------------------
+// ==========================
+// RUN SYNC (Sheet tab: Runs)
+// Headers recommended:
+// RowID | Timestamp | Athlete | DistanceKm | Time | Effort | Notes | Pace
+// ==========================
 async function syncRun() {
   const ts = new Date().toISOString();
   const date = todayRunDate();
@@ -602,11 +598,19 @@ async function syncRun() {
   const notes = (localStorage.getItem(runKey(date, "notes")) || "").trim();
 
   const pace = calculatePace(distance, time);
-  if (!distance || !time) return;
 
+  const el = document.getElementById("runSyncStatus");
+  if (el) el.textContent = "";
+
+  if (!distance || !time) {
+    if (el) el.textContent = "Please enter both distance and time first.";
+    return;
+  }
+
+  // Unique RowID so each run is stored historically
   const rowId = `${ATHLETE}|RUN|${ts}`;
-  const runRows = [[rowId, ts, ATHLETE, distance, time, effort, notes, pace]];
 
+  const runRows = [[rowId, ts, ATHLETE, distance, time, effort, notes, pace]];
   runRows.forEach((r) => upsertRowIntoHistory(RUNS_LOG_KEY, r));
 
   const payload = JSON.stringify({
@@ -616,7 +620,6 @@ async function syncRun() {
     bodyRows: [],
   });
 
-  const el = document.getElementById("runSyncStatus");
   if (el) el.textContent = "Syncing…";
 
   try {
@@ -629,16 +632,15 @@ async function syncRun() {
 
     if (el) el.textContent = "✅ Run synced!";
 
-// ✅ Mark run as completed for today (THIS is what unlocks Finish Workout)
-markRunDoneToday();
+    // ✅ This is the unlock flag (survives clearing draft)
+    markRunDoneToday();
 
-// Clear today’s draft so it DOES NOT carry over
-clearRunDraftForToday();
+    // Clear draft so it doesn't carry over
+    clearRunDraftForToday();
 
-// Refresh UI and unlock finish
-renderRun();
-renderToday();
-
+    // Refresh UI (Run cleared, Today unlocked)
+    renderRun();
+    renderToday();
   } catch (err) {
     console.error(err);
     if (el) el.textContent = "❌ Sync failed.";
@@ -646,9 +648,9 @@ renderToday();
 }
 window.syncRun = syncRun;
 
-// --------------------------
-// NUTRITION TAB
-// --------------------------
+// ==========================
+// NUTRITION TAB (targets + toggles + steps count)
+// ==========================
 function renderNutrition() {
   const date = localStorage.getItem("nutri_date") || todayDateStr();
   const key = (k) => `nutri_${date}_${k}`;
@@ -663,9 +665,28 @@ function renderNutrition() {
       <div style="background:#f7f7f7;border:1px solid #ddd;border-radius:12px;padding:12px;margin:12px 0;">
         <h3 style="margin:0 0 8px 0;">Today's Targets</h3>
         <strong>Protein:</strong> ${NUTRITION_TARGETS.protein_g}g<br>
+        <small style="color:#555;">Protein every meal + snack</small><br><br>
         <strong>Water:</strong> ${NUTRITION_TARGETS.water_l_min}-${NUTRITION_TARGETS.water_l_max}L<br>
+        <small style="color:#555;">Add extra on run days</small><br><br>
         <strong>Veg:</strong> ${NUTRITION_TARGETS.veg_serves}+ serves<br>
+        <small style="color:#555;">2 fists veg lunch + dinner</small><br><br>
         <strong>Steps:</strong> ${NUTRITION_TARGETS.steps.toLocaleString()}+
+      </div>
+
+      <div style="background:#fff;border:1px solid #ddd;border-radius:12px;padding:12px;margin:12px 0;">
+        <h3 style="margin:0 0 8px 0;">Protein Cheatsheet 🍗</h3>
+        <div style="line-height:1.6;color:#444;">
+          <strong>≈30g protein examples:</strong><br>
+          ✅ 150g chicken breast<br>
+          ✅ 200g Greek yogurt<br>
+          ✅ Whey shake + milk<br>
+          ✅ 4 eggs + egg whites<br>
+          ✅ 150g lean beef<br>
+          ✅ Tuna + rice cakes<br><br>
+          <small style="color:#666;">
+            Goal = ~4 protein feeds/day → hits ${NUTRITION_TARGETS.protein_g}g automatically.
+          </small>
+        </div>
       </div>
 
       <label>Date</label>
@@ -681,8 +702,8 @@ function renderNutrition() {
       </div>
 
       <div style="margin-top:12px;">
-        <label>Steps (number)</label>
-        <input id="nutriStepsCount" placeholder="e.g. 10350">
+        <label>Steps (optional number)</label>
+        <input id="nutriStepsCount" placeholder="e.g. 10350" />
       </div>
 
       <div style="margin-top:12px;">
@@ -696,7 +717,7 @@ function renderNutrition() {
       </div>
 
       <div style="margin-top:12px;">
-        <button onclick="syncNutrition()">Sync Nutrition to Coach 🍎</button>
+        <button onclick="syncNutrition()" style="padding:10px 12px;cursor:pointer;">Sync Nutrition to Coach 🍎</button>
         <p id="nutriSyncStatus" style="color:#666;"></p>
       </div>
 
@@ -720,6 +741,8 @@ function renderNutrition() {
     btn.style.background = yes ? "#111" : "#fff";
     btn.style.color = yes ? "#fff" : "#111";
     btn.style.border = "1px solid #111";
+    btn.style.padding = "10px 12px";
+    btn.style.cursor = "pointer";
   }
 
   function toggle(field) {
@@ -753,9 +776,10 @@ function renderNutrition() {
   refresh();
 }
 
-// --------------------------
-// NUTRITION SYNC
-// --------------------------
+// ==========================
+// NUTRITION SYNC (Sheet tab: Nutrition)
+// RowID | Date | Athlete | Protein | Water | Veg | Steps | StepsCount | Energy | Notes | Timestamp
+// ==========================
 async function syncNutrition() {
   const ts = new Date().toISOString();
   const date = localStorage.getItem("nutri_date") || todayDateStr();
@@ -770,10 +794,16 @@ async function syncNutrition() {
   const notes = (localStorage.getItem(key("notes")) || "").trim();
 
   const rowId = `${ATHLETE}|NUTRITION|${date}`;
+
   const nutritionRows = [[rowId, date, ATHLETE, protein, water, veg, steps, stepsCount, energy, notes, ts]];
   nutritionRows.forEach((r) => upsertRowIntoHistory(NUTRI_LOG_KEY, r));
 
-  const payload = JSON.stringify({ setRows: [], runRows: [], nutritionRows, bodyRows: [] });
+  const payload = JSON.stringify({
+    setRows: [],
+    runRows: [],
+    nutritionRows,
+    bodyRows: [],
+  });
 
   const el = document.getElementById("nutriSyncStatus");
   if (el) el.textContent = "Syncing…";
@@ -793,9 +823,9 @@ async function syncNutrition() {
 }
 window.syncNutrition = syncNutrition;
 
-// --------------------------
-// BODY TAB + SYNC
-// --------------------------
+// ==========================
+// BODY TAB
+// ==========================
 function renderBody() {
   const date = localStorage.getItem("body_date") || todayDateStr();
   const key = (k) => `body_${date}_${k}`;
@@ -808,6 +838,12 @@ function renderBody() {
   app.innerHTML = `
     <div class="card">
       <h2>Body Tracking</h2>
+
+      <div style="background:#f7f7f7;border:1px solid #ddd;border-radius:12px;padding:12px;margin-bottom:12px;">
+        <strong>Coach Goal</strong><br>
+        Lean muscle gain + improved 5K endurance.<br>
+        Track weekly trends — not daily fluctuations.
+      </div>
 
       <label>Date</label>
       <input id="bodyDate" type="date" value="${date}">
@@ -824,7 +860,9 @@ function renderBody() {
       <label>Notes</label>
       <input id="bodyNotes" placeholder="Sleep, cycle, stress etc" value="${notes}">
 
-      <button onclick="syncBody()">Sync Body to Coach 📊</button>
+      <button onclick="syncBody()" style="padding:10px 12px;cursor:pointer;margin-top:12px;">
+        Sync Body to Coach 📊
+      </button>
       <p id="bodySyncStatus" style="color:#666;"></p>
 
       <p style="color:green;">✓ Auto saved</p>
@@ -848,6 +886,10 @@ function renderBody() {
   notesInput.oninput = () => localStorage.setItem(key("notes"), notesInput.value);
 }
 
+// ==========================
+// BODY SYNC (Sheet tab: Body)
+// RowID | Date | Athlete | WeightKg | WaistCm | HipsCm | Notes | Timestamp
+// ==========================
 async function syncBody() {
   const ts = new Date().toISOString();
   const date = localStorage.getItem("body_date") || todayDateStr();
@@ -858,13 +900,18 @@ async function syncBody() {
   const hips = (localStorage.getItem(key("hips")) || "").trim();
   const notes = (localStorage.getItem(key("notes")) || "").trim();
 
-  if (!weight && !waist && !hips) return;
+  if (!weight && !waist && !hips && !notes) return;
 
   const rowId = `${ATHLETE}|BODY|${date}`;
   const bodyRows = [[rowId, date, ATHLETE, weight, waist, hips, notes, ts]];
   bodyRows.forEach((r) => upsertRowIntoHistory(BODY_LOG_KEY, r));
 
-  const payload = JSON.stringify({ setRows: [], runRows: [], nutritionRows: [], bodyRows });
+  const payload = JSON.stringify({
+    setRows: [],
+    runRows: [],
+    nutritionRows: [],
+    bodyRows,
+  });
 
   const el = document.getElementById("bodySyncStatus");
   if (el) el.textContent = "Syncing…";
@@ -884,19 +931,137 @@ async function syncBody() {
 }
 window.syncBody = syncBody;
 
-// --------------------------
-// PROGRESS (keep your existing if you want; placeholder for now)
-// --------------------------
+// ==========================
+// PROGRESS TAB (charts)
+// ==========================
+function loadChartJs() {
+  return new Promise((resolve, reject) => {
+    if (window.Chart) return resolve();
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js";
+    s.onload = resolve;
+    s.onerror = () => reject(new Error("Chart.js failed to load"));
+    document.head.appendChild(s);
+  });
+}
+
+let runChartInst = null;
+let strengthChartInst = null;
+
 function renderProgress() {
   app.innerHTML = `
     <div class="card">
       <h2>Progress</h2>
-      <p>Charts are in your previous version — tell me if you want them back here.</p>
+
+      <div style="border:1px solid #ddd;border-radius:12px;padding:12px;margin:12px 0;">
+        <h3 style="margin:0 0 8px 0;">Run Pace Trend</h3>
+        <canvas id="runPaceChart" height="180"></canvas>
+      </div>
+
+      <div style="border:1px solid #ddd;border-radius:12px;padding:12px;margin:12px 0;">
+        <h3 style="margin:0 0 8px 0;">Strength Trend</h3>
+        <label>Select exercise</label>
+        <select id="exSelect" style="padding:8px;min-width:220px;"></select>
+        <canvas id="strengthChart" height="180" style="margin-top:10px;"></canvas>
+      </div>
+
+      <p style="color:#666;font-size:13px;">
+        Tip: charts use local history. Sync Sets/Run/Nutrition/Body at least once.
+      </p>
     </div>
   `;
+
+  renderCharts();
 }
 
-// --------------------------
+async function renderCharts() {
+  try {
+    await loadChartJs();
+  } catch (e) {
+    console.error(e);
+    return;
+  }
+
+  // ===== RUN PACE =====
+  const runRows = getLogArr(RUNS_LOG_KEY);
+  const runLabels = runRows.map((r) => String(r[1] || "").slice(0, 10));
+  const runPaceMin = runRows.map((r) => {
+    const dist = parseFloat(r[3]);
+    const mins = timeToMinutes(r[4]);
+    if (!dist || mins == null) return null;
+    return mins / dist;
+  });
+
+  const runCtx = document.getElementById("runPaceChart")?.getContext("2d");
+  if (runCtx) {
+    if (runChartInst) runChartInst.destroy();
+    runChartInst = new Chart(runCtx, {
+      type: "line",
+      data: {
+        labels: runLabels,
+        datasets: [{ label: "Pace (min/km)", data: runPaceMin, spanGaps: true, tension: 0.25 }],
+      },
+      options: { responsive: true, plugins: { legend: { display: true } } },
+    });
+  }
+
+  // ===== STRENGTH AVG WEIGHT =====
+  const exSelect = document.getElementById("exSelect");
+  if (!exSelect) return;
+
+  const names = [];
+  program.forEach((d) =>
+    d.exercises.forEach((ex) => {
+      const nm = String(ex.name || "");
+      if (nm.toUpperCase().startsWith("RUN_")) return;
+      if (!names.includes(nm) && ex.sets > 1) names.push(nm);
+    })
+  );
+
+  exSelect.innerHTML = names.map((n) => `<option value="${n}">${n}</option>`).join("");
+  exSelect.value = exSelect.value || names[0] || "";
+
+  function drawStrength(exName) {
+    const setRows = getLogArr(SETS_LOG_KEY);
+
+    const map = new Map(); // date -> {sum,count}
+    setRows.forEach((r) => {
+      if (String(r[4]) !== exName) return;
+      const date = String(r[1] || "").slice(0, 10);
+      const w = parseFloat(r[7]);
+      if (!date || !Number.isFinite(w)) return;
+
+      if (!map.has(date)) map.set(date, { sum: 0, count: 0 });
+      const o = map.get(date);
+      o.sum += w;
+      o.count += 1;
+    });
+
+    const dates = [...map.keys()].sort();
+    const avg = dates.map((d) => {
+      const o = map.get(d);
+      return o.count ? o.sum / o.count : null;
+    });
+
+    const ctx = document.getElementById("strengthChart")?.getContext("2d");
+    if (!ctx) return;
+
+    if (strengthChartInst) strengthChartInst.destroy();
+    strengthChartInst = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: dates,
+        datasets: [{ label: `${exName} avg weight (kg)`, data: avg, spanGaps: true, tension: 0.25 }],
+      },
+      options: { responsive: true, plugins: { legend: { display: true } } },
+    });
+  }
+
+  drawStrength(exSelect.value);
+  exSelect.addEventListener("change", () => drawStrength(exSelect.value));
+}
+
+// ==========================
 // INITIAL LOAD
-// --------------------------
+// ==========================
 renderToday();
