@@ -1,3 +1,10 @@
+import { useEffect } from "react";
+import { bootApp } from "./appCore";
+
 export default function App() {
-  return <div>Alana Training App</div>;
+  useEffect(() => {
+    bootApp();
+  }, []);
+
+  return <div id="app"></div>;
 }
